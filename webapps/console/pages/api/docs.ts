@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ApiReference } from "@scalar/nextjs-api-reference";
+import { withBasePath } from "../../lib/base-path";
 
 // `@scalar/nextjs-api-reference` targets the App Router (returns a fetch `Response`).
 // This project uses the Pages Router, so we adapt the handler ourselves.
 const fetchHandler = ApiReference({
-  url: "/api/spec",
+  url: withBasePath("/api/spec"),
   pageTitle: "Jitsu API Reference",
   // Scalar auto-enables the "Ask AI Agent" button and the MCP integrations block
   // (VS Code / Cursor / Generate MCP) on localhost; explicitly disable both so they

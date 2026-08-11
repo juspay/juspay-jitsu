@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { rpc } from "juava";
 import { LoadingAnimation } from "../components/GlobalLoader/GlobalLoader";
 import { useEffect, useState } from "react";
+import { withBasePath } from "../lib/base-path";
 
 function timeUntil(date: Date): { days: number; hours: number; minutes: number; seconds: number } {
   const now = new Date();
@@ -172,7 +173,7 @@ const CustomPlanView: React.FC<{ token: string }> = ({ token }) => {
                     workspaceId: selectedWorkspace,
                     planId: data.plan.id,
                     email: user.email,
-                    returnUrl: `${window.location.origin}/${selectedWorkspace}/settings/billing`,
+                    returnUrl: `${window.location.origin}${withBasePath(`/${selectedWorkspace}/settings/billing`)}`,
                     cancelUrl: window.location.href,
                   })
                 }

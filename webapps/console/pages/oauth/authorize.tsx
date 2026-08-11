@@ -5,6 +5,7 @@ import { Button } from "antd";
 import type { GetServerSideProps } from "next";
 import { useUser } from "../../lib/context";
 import { db } from "../../lib/server/db";
+import { basePathFetch } from "../../lib/base-path";
 
 // MCP OAuth consent page. Renders after the user is logged in (LoginWrapper
 // in _app.tsx handles the redirect-to-/signin dance if not). On Approve we
@@ -44,7 +45,7 @@ const Authorize = ({ clientName }: { clientName: string | null }) => {
     setSubmitting(true);
     setError(undefined);
     try {
-      const res = await fetch("/api/mcp/oauth/approve", {
+      const res = await basePathFetch("/api/mcp/oauth/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,7 +79,7 @@ const Authorize = ({ clientName }: { clientName: string | null }) => {
     setSubmitting(true);
     setError(undefined);
     try {
-      const res = await fetch("/api/mcp/oauth/deny", {
+      const res = await basePathFetch("/api/mcp/oauth/deny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ client_id: clientId, redirect_uri: redirectUri, state }),

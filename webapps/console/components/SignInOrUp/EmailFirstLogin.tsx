@@ -3,6 +3,7 @@ import { Alert, Button, Input, Spin } from "antd";
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { rpc } from "juava";
 import { AuthType } from "./SignInOrUp";
+import { withBasePath } from "../../lib/base-path";
 
 type AuthMethod = {
   type: AuthType;
@@ -99,7 +100,10 @@ export const EmailFirstLogin: React.FC<EmailFirstLoginProps> = ({ onPasswordLogi
               onPressEnter={handlePasswordLogin}
             />
             <div className="mt-2 text-right">
-              <a className="text-sm hover:text-primary" href={`/reset-password?email=${encodeURIComponent(email)}`}>
+              <a
+                className="text-sm hover:text-primary"
+                href={withBasePath(`/reset-password?email=${encodeURIComponent(email)}`)}
+              >
                 Forgot password?
               </a>
             </div>

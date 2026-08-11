@@ -11,6 +11,7 @@ import { useQueryStringState } from "../../lib/useQueryStringState";
 import { feedbackError } from "../../lib/ui";
 import { useFirebaseSession } from "../../lib/firebase-client";
 import { JitsuButton } from "../../components/JitsuButton/JitsuButton";
+import { withBasePath } from "../../lib/base-path";
 
 export const UserDetails: React.FC<{ externalId?: string; internalId?: string }> = props => {
   const { data, isLoading, error } = useApi(urlWithQueryString(`/api/admin/users`, props, { filterUndefined: true }));
@@ -45,7 +46,7 @@ export const BecomeUser: React.FC<{ externalId?: string; internalId?: string }> 
           const { token } = await get(`/api/admin/become`, { method: "POST", body: { externalId: props.externalId } });
           await fb.resolveUser(token).user;
           //we need to a full reload, so the top level components catch up on the new user
-          window.location.assign("/");
+          window.location.assign(withBasePath("/"));
         } catch (e) {
           feedbackError("Failed to become user", { error: e });
         } finally {

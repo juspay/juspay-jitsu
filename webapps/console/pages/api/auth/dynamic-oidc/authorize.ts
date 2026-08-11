@@ -65,7 +65,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       req.headers["x-forwarded-protocol"] ||
       (req.url?.startsWith("https") ? "https" : "http");
     const serverEnv = getServerEnv();
-    const baseUrl = serverEnv.NEXTAUTH_URL || serverEnv.JITSU_PUBLIC_URL || `${protocol}://${req.headers.host}`;
+    const baseUrl =
+      serverEnv.JITSU_PUBLIC_URL ||
+      serverEnv.JITSU_PUBLIC ||
+      serverEnv.NEXTAUTH_URL ||
+      `${protocol}://${req.headers.host}`;
     const redirectUri = `${baseUrl}/api/auth/dynamic-oidc/callback`;
 
     // Get authorization URL

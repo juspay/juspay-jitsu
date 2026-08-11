@@ -1,4 +1,11 @@
 import { NextRouter } from "next/router";
+import { withBasePath, withoutBasePath } from "./base-path";
+
+const authPaths = ["/signin", "/signup", "/reset-password"];
+
+function isAuthPath(path: string): boolean {
+  return authPaths.some(authPath => path.startsWith(authPath) || path.startsWith(withBasePath(authPath)));
+}
 
 /**
  * Utility functions for handling return URLs during authentication flows
@@ -11,11 +18,10 @@ import { NextRouter } from "next/router";
  */
 export function captureReturnUrl(router: NextRouter): string {
   // Don't redirect back to auth-related pages
-  const authPaths = ["/signin", "/signup", "/reset-password"];
-  const currentPath = router.asPath;
+  const currentPath = withBasePath(router.asPath);
 
-  if (authPaths.some(path => currentPath.startsWith(path))) {
-    return "/"; // Redirect to home if on auth page
+  if (isAuthPath(currentPath)) {
+    return withBasePath("/"); // Redirect to home if on auth page
   }
 
   // Use the full current path including query parameters
@@ -49,9 +55,8 @@ export function validateReturnUrl(returnUrl: string): string | undefined {
   // Allow relative URLs
   if (returnUrl.startsWith("/") && !returnUrl.startsWith("//")) {
     // Ensure it's not an auth page
-    const authPaths = ["/signin", "/signup", "/reset-password"];
-    if (authPaths.some(path => returnUrl.startsWith(path))) {
-      return "/";
+    if (isAuthPath(returnUrl)) {
+      return withBasePath("/");
     }
     return returnUrl;
   }
@@ -63,12 +68,14 @@ export function validateReturnUrl(returnUrl: string): string | undefined {
  * @param returnUrl URL to redirect to
  */
 export function safeRedirect(router: NextRouter, returnUrl: string | null): void {
-  const validatedUrl = validateReturnUrl(returnUrl || "/");
-  const finalUrl = validatedUrl || "/";
+  const validatedUrl = validateReturnUrl(returnUrl || withBasePath("/"));
+  const finalUrl = withBasePath(validatedUrl || "/");
 
   console.log(`Redirecting to: ${finalUrl}`);
 
-  router.push(finalUrl);
+  // Next Router adds its configured basePath automatically, so pass it an
+  // unprefixed path even though callback URLs themselves must include it.
+  router.push(withoutBasePath(finalUrl));
 }
 
 /**
@@ -78,16 +85,17 @@ export function safeRedirect(router: NextRouter, returnUrl: string | null): void
  * @returns signin URL with return URL parameter
  */
 export function addReturnUrlToSignin(signinUrl: string, returnUrl: string | null): string {
+  const basePathSigninUrl = withBasePath(signinUrl);
   if (!returnUrl) {
-    return signinUrl;
+    return basePathSigninUrl;
   }
 
   const validatedUrl = validateReturnUrl(returnUrl);
   if (!validatedUrl || validatedUrl === "/") {
-    return signinUrl;
+    return basePathSigninUrl;
   }
 
-  const url = new URL(signinUrl, window.location.origin);
+  const url = new URL(basePathSigninUrl, window.location.origin);
   url.searchParams.set("callbackUrl", validatedUrl);
   return url.toString();
 }

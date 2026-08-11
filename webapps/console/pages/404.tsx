@@ -1,5 +1,6 @@
 import { useRouter } from "next/router";
 import { Button } from "antd";
+import { withBasePath } from "../lib/base-path";
 
 export default function Custom404() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export default function Custom404() {
           URL: <code>{window.location.pathname}</code>
         </h3>
         <div className="flex justify-center mt-12">
-          <Button className="mx-auto" size="large" type="primary" href="/">
+          <Button className="mx-auto" size="large" type="primary" href={withBasePath("/")}>
             Go to home page
           </Button>
         </div>

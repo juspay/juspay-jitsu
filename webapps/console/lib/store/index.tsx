@@ -16,6 +16,7 @@ import { z } from "zod";
 import { ConfigurationObjectLinkDbModel, ProfileBuilderDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { UseMutationResult } from "@tanstack/react-query";
 import { useRouter } from "next/router";
+import { basePathFetch } from "../base-path";
 
 export const allConfigTypes = [
   "stream",
@@ -237,7 +238,7 @@ export function useConfigObjectsUpdater(workspaceIdOrSlug: string): UseConfigObj
         interval = setInterval(async () => {
           if (!document.hidden) {
             try {
-              const ifModified = await fetch(
+              const ifModified = await basePathFetch(
                 `/api/${res.workspaceId}/listen?maxWaitMs=0&ifModifiedSince=${modifiedSince.toISOString()}`,
                 {
                   signal: abortController.signal,

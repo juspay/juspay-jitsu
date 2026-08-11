@@ -23,6 +23,7 @@ import { ButtonGroup } from "../../components/ButtonGroup/ButtonGroup";
 import { useConfigObjectLinks, useConfigObjectList } from "../../lib/store";
 import Link from "next/link";
 import { WorkspacePermissionsType } from "../../lib/workspace-roles";
+import { withBasePath } from "../../lib/base-path";
 
 function HoverBorder({ children, forceHover }: { children: ReactNode; forceHover?: boolean }) {
   const [_hover, setHover] = useState(false);
@@ -256,7 +257,9 @@ function WorkspaceOverview(props: {
                 icon={
                   <img
                     alt="logo"
-                    src={`/api/sources/logo?package=${encodeURIComponent(cfg.package)}&protocol=${cfg.protocol}`}
+                    src={withBasePath(
+                      `/api/sources/logo?package=${encodeURIComponent(cfg.package)}&protocol=${cfg.protocol}`
+                    )}
                   />
                 }
                 badge={

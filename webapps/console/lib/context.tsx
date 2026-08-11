@@ -5,6 +5,7 @@ import { WorkspaceDbModel } from "../prisma/schema";
 import omit from "lodash/omit";
 import { Analytics } from "../pages/_app";
 import type { WorkspaceRoleWithPermissions } from "./workspace-roles";
+import { clientBasePath } from "./shared/clientEnv";
 
 export type WorkspaceContext = z.infer<typeof WorkspaceDbModel> & {
   slugOrId: string;
@@ -56,7 +57,7 @@ export function getDomains(cfg: AppConfig): { appBase: string; dataDomain: (slug
   return {
     appBase: `${cfg.publicEndpoints.protocol}://${cfg.publicEndpoints.host}${
       cfg.publicEndpoints.port ? `:${cfg.publicEndpoints.port}` : ""
-    }`,
+    }${clientBasePath}`,
     dataDomain: (slug: string) => {
       return `${cfg.publicEndpoints.protocol}://${slug}.${cfg.publicEndpoints.dataHost}${
         cfg.publicEndpoints.port ? `:${cfg.publicEndpoints.port}` : ""

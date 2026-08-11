@@ -21,6 +21,7 @@ import { assertDefined, getLog, requireDefined, rpc } from "juava";
 import React, { PropsWithChildren, useRef, useState } from "react";
 import TextArea from "antd/lib/input/TextArea";
 import { get, getConfigApi, useApi } from "../../lib/useApi";
+import { basePathFetch } from "../../lib/base-path";
 import { EmbeddedErrorMessage, ErrorCard } from "../../components/GlobalError/GlobalError";
 import { branding } from "../../lib/branding";
 import styles from "../../components/ConfigObjectEditor/ConfigEditor.module.css";
@@ -495,7 +496,7 @@ function ProvisionedDestinationDeleteButton(props: {
     ) {
       setLoading(true);
       try {
-        await fetch(`/api/${workspace.id}/config/destination/${props.destination.id}`, { method: "DELETE" });
+        await basePathFetch(`/api/${workspace.id}/config/destination/${props.destination.id}`, { method: "DELETE" });
         await props.onSuccessfulDelete();
       } catch (error) {
         feedbackError("Failed to delete destination", { error });

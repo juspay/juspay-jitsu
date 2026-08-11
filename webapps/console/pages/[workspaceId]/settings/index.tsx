@@ -13,6 +13,7 @@ import { WorkspaceNameAndSlugEditor } from "../../../components/WorkspaceNameAnd
 import { requireDefined } from "juava";
 import { FaExternalLinkAlt, FaGithub, FaGoogle, FaUser } from "react-icons/fa";
 import Link from "next/link";
+import { withBasePath } from "../../../lib/base-path";
 import { AntdModal, useAntdModal } from "../../../lib/modal";
 import { FiMail } from "react-icons/fi";
 import {
@@ -642,7 +643,7 @@ const WorkspaceSettingsComponent: React.FC<any> = () => {
             workspace={workspace}
             canEdit={userRole.editEntities}
             displayId={true}
-            onSuccess={({ slug }) => (window.location.href = `/${slug}/settings`)}
+            onSuccess={({ slug }) => (window.location.href = withBasePath(`/${slug}/settings`))}
           />
         </div>
 

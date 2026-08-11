@@ -24,6 +24,7 @@ import { SchemaForm } from "../ConfigObjectEditor/SchemaForm";
 import { TextEditor } from "../ConfigObjectEditor/Editors";
 import { useAntdModal } from "../../lib/modal";
 import { useStoreReload } from "../../lib/store";
+import { withBasePath } from "../../lib/base-path";
 
 type ServiceEditorProps = {} & EditorComponentProps;
 
@@ -289,7 +290,9 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
                   <img
                     className={"w-4 h-4"}
                     alt={obj?.package}
-                    src={`/api/sources/logo?type=${obj?.protocol}&package=${encodeURIComponent(obj?.package ?? "")}`}
+                    src={withBasePath(
+                      `/api/sources/logo?type=${obj?.protocol}&package=${encodeURIComponent(obj?.package ?? "")}`
+                    )}
                   />
                 }
               >
