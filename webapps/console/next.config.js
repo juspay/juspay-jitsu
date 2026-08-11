@@ -6,8 +6,10 @@ const path = require("path");
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true",
 });
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 module.exports = withBundleAnalyzer({
+  basePath,
   poweredByHeader: false,
   transpilePackages: ["juava", "@jitsu/protocols", "@jitsu/core-functions-lib", "@jitsu/destination-functions", "@jitsu-internal/webapps-shared", "@jitsu/js"],
   // Allow portless dev hosts (https://console[-branch].jitsu.localhost) to

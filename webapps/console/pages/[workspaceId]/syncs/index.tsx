@@ -45,6 +45,7 @@ import { useConfigObjectLinks, useConfigObjectList, useStoreReload } from "../..
 import { getCoreDestinationTypeNonStrict } from "../../../lib/schema/destinations";
 import { FaRegFloppyDisk } from "react-icons/fa6";
 import { WLink } from "../../../components/Workspace/WLink";
+import { clientBasePath } from "../../../lib/shared/clientEnv";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
@@ -637,7 +638,8 @@ const ScheduleDocumentation: React.FC<{
     appConfig.publicEndpoints.protocol +
     "://" +
     appConfig.publicEndpoints.host +
-    ([80, 443].includes(appConfig.publicEndpoints.port ?? 80) ? "" : ":" + appConfig.publicEndpoints.port);
+    ([80, 443].includes(appConfig.publicEndpoints.port ?? 80) ? "" : ":" + appConfig.publicEndpoints.port) +
+    clientBasePath;
   return (
     <Overlay onClose={onCancel} className="px-6 py-6">
       <div className={"flex flex-row gap-2 border-b pb-2 mb-4"} style={{ minWidth: 900 }}>

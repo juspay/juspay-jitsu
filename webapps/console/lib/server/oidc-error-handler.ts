@@ -1,5 +1,6 @@
 import { NextApiResponse } from "next";
 import { getServerLog } from "./log";
+import { withBasePath } from "../base-path";
 
 const log = getServerLog("oidc-error-handler");
 
@@ -24,7 +25,7 @@ export function redirectWithOidcError(res: NextApiResponse, options: OidcErrorRe
     ...(returnUrl && { callbackUrl: returnUrl }),
   });
 
-  const redirectUrl = `/signin?${params.toString()}`;
+  const redirectUrl = withBasePath(`/signin?${params.toString()}`);
 
   log.atWarn().log("Redirecting with OIDC error", {
     error,

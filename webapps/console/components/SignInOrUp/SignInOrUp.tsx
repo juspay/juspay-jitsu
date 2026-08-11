@@ -11,6 +11,7 @@ import { useJitsu } from "@jitsu/jitsu-react";
 import { useAppConfig } from "../../lib/context";
 import { safeRedirect } from "../../lib/auth-redirect";
 import { Alert } from "antd";
+import { withBasePath } from "../../lib/base-path";
 
 export type AuthType =
   | "firebase-password"
@@ -66,7 +67,8 @@ export const SignInOrUp: React.FC<SigninProps> = ({ signup }) => {
   const { analytics } = useJitsu();
   const [error, setError] = useState<string | null>(null);
 
-  const callbackUrl = (router.query.callbackUrl as string) || "/";
+  const callbackUrlQuery = router.query.callbackUrl;
+  const callbackUrl = withBasePath(typeof callbackUrlQuery === "string" ? callbackUrlQuery : "/");
 
   // Determine available auth methods
   const hasFirebase = !!appConfig.auth?.firebasePublic;
@@ -178,9 +180,11 @@ export const SignInOrUp: React.FC<SigninProps> = ({ signup }) => {
           await signIn("oidc", { callbackUrl }, { ...(loginHint ? { login_hint: loginHint } : {}), prompt: "login" });
           break;
         case "dynamic-oidc":
-          window.location.href = `/api/auth/dynamic-oidc/authorize?providerId=${providerId}&callbackUrl=${encodeURIComponent(
-            callbackUrl
-          )}${loginHint ? `&loginHint=${encodeURIComponent(loginHint)}` : ""}`;
+          window.location.href = withBasePath(
+            `/api/auth/dynamic-oidc/authorize?providerId=${providerId}&callbackUrl=${encodeURIComponent(callbackUrl)}${
+              loginHint ? `&loginHint=${encodeURIComponent(loginHint)}` : ""
+            }`
+          );
           break;
         default:
           setError(`Unsupported authentication provider: ${provider}`);

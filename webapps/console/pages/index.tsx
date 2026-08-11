@@ -9,6 +9,7 @@ import { WORK_EMAIL_REQUIRED_MESSAGE } from "../lib/shared/email-domains";
 import { Button, Modal } from "antd";
 import { encrypt, getLog, randomId, rpc } from "juava";
 import { useUserSessionControls } from "../lib/context";
+import { withBasePath } from "../lib/base-path";
 
 const log = getLog("index");
 
@@ -64,7 +65,7 @@ function WorkspaceRedirect() {
           closable={false}
           title={
             <div className={"flex flex-row items-center"}>
-              <img alt={""} src="/logo.svg" className="anticon h-5 w-5 mr-2" />
+              <img alt={""} src={withBasePath("/logo.svg")} className="anticon h-5 w-5 mr-2" />
               <span>Jitsu CLI authorization</span>
             </div>
           }

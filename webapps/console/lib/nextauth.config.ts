@@ -11,6 +11,7 @@ import { NextApiRequest } from "next";
 import { onUserCreated } from "./server/ee";
 import { getServerEnv } from "./server/serverEnv";
 import { authAuditLog } from "./server/audit-log";
+import { withBasePath } from "./base-path";
 
 const crypto = require("crypto");
 
@@ -190,8 +191,8 @@ function buildNextAuthConfig(req?: NextApiRequest): NextAuthOptions {
     // Configure one or more authentication providers
     providers: [githubProvider, oidcProvider, credentialsProvider].filter(provider => !!provider) as any,
     pages: {
-      error: "/error/auth", // Error code passed in query string as ?error=
-      signIn: "/signin", // Displays signin buttons
+      error: withBasePath("/error/auth"), // Error code passed in query string as ?error=
+      signIn: withBasePath("/signin"), // Displays signin buttons
     },
     ...sharedCookieOptions,
 

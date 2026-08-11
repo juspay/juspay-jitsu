@@ -41,6 +41,7 @@ RUN apt-get update && \
 FROM jitsucom/jitsu-builder:latest AS builder
 
 ARG CI=false
+ARG NEXT_PUBLIC_BASE_PATH=/jitsu
 
 WORKDIR /app
 
@@ -93,6 +94,7 @@ COPY . .
 #   CI: some packages behave differently in CI (e.g., disable interactive prompts)
 ENV NEXTJS_STANDALONE_BUILD=1
 ENV CI=${CI}
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 # Note: pnpm build now includes building the management CLI (build:manage)
 RUN pnpm build
 
@@ -107,6 +109,7 @@ FROM base AS console
 ARG JITSU_BUILD_VERSION=dev,
 ARG JITSU_BUILD_DOCKER_TAG=dev,
 ARG JITSU_BUILD_COMMIT_SHA=unknown,
+ARG NEXT_PUBLIC_BASE_PATH=/jitsu
 
 WORKDIR /app
 
@@ -151,12 +154,13 @@ EXPOSE 3000
 
 # Health check for container orchestration (Kubernetes, Docker Compose, etc.)
 # Calls Next.js healthcheck endpoint every 30s (default)
-HEALTHCHECK CMD curl --fail http://localhost:3000/api/healthcheck || exit 1
+HEALTHCHECK CMD curl --fail "http://localhost:3000${NEXT_PUBLIC_BASE_PATH}/api/healthcheck" || exit 1
 
 # Set environment variables for runtime
 # NODE_ENV=production: Enables production optimizations in Node.js and Next.js
 # JITSU_VERSION_*: Version info displayed in the UI and logs
 ENV NODE_ENV=production
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 ENV JITSU_VERSION_COMMIT_SHA=${JITSU_BUILD_COMMIT_SHA}
 ENV JITSU_VERSION_DOCKER_TAG=${JITSU_BUILD_DOCKER_TAG}
 ENV JITSU_VERSION_STRING=${JITSU_BUILD_VERSION}

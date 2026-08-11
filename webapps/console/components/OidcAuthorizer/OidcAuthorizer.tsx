@@ -4,6 +4,7 @@ import { getLog } from "juava";
 import { ContextApiResponse } from "../../lib/schema";
 import { UserContextProvider } from "../../lib/context";
 import { GlobalLoader } from "../GlobalLoader/GlobalLoader";
+import { basePathFetch } from "../../lib/base-path";
 
 const log = getLog("oidc-authorizer");
 
@@ -16,7 +17,7 @@ export const OidcAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) =>
     const checkAndRenewSession = async () => {
       try {
         // Check session via secure API endpoint
-        const response = await fetch("/api/auth/dynamic-oidc/session", {
+        const response = await basePathFetch("/api/auth/dynamic-oidc/session", {
           method: "GET",
           credentials: "include",
         });
@@ -46,14 +47,14 @@ export const OidcAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) =>
           // Token needs refresh, try to renew the session
           log.atInfo().log("OIDC session needs refresh, attempting renewal");
 
-          const renewResponse = await fetch("/api/auth/dynamic-oidc/renew", {
+          const renewResponse = await basePathFetch("/api/auth/dynamic-oidc/renew", {
             method: "POST",
             credentials: "include",
           });
 
           if (renewResponse.ok) {
             // After successful renewal, check session again
-            const secondCheckResponse = await fetch("/api/auth/dynamic-oidc/session", {
+            const secondCheckResponse = await basePathFetch("/api/auth/dynamic-oidc/session", {
               method: "GET",
               credentials: "include",
             });
@@ -130,7 +131,7 @@ export const OidcAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) =>
         logout={async () => {
           // Call logout endpoint to clear httpOnly cookie
           try {
-            await fetch("/api/auth/dynamic-oidc/logout", {
+            await basePathFetch("/api/auth/dynamic-oidc/logout", {
               method: "POST",
               credentials: "include",
             });

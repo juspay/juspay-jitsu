@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LoadingAnimation } from "../../../components/GlobalLoader/GlobalLoader";
 import escape from "lodash/escape";
 import { BackButton } from "../../../components/BackButton/BackButton";
+import { basePathFetch } from "../../../lib/base-path";
 
 function colorLogs(data: string[]): ReactNode {
   return data.map((line, i) => {
@@ -70,7 +71,7 @@ function TaskLogs() {
   const { isLoading, data, error } = useQuery(
     ["taskLog", router.query.taskId, refresh],
     async () => {
-      const res = await fetch(logsUrl);
+      const res = await basePathFetch(logsUrl);
       return res.text();
     },
     { cacheTime: 0, retry: false }

@@ -1,4 +1,4 @@
-import { getLog, isTruish, LogLevel, setGlobalLogLevel } from "juava";
+import { getLog, isTruish, LogLevel, rpc, setGlobalLogLevel } from "juava";
 import { AppProps } from "next/app";
 import "../styles/globals.css";
 import { useRouter } from "next/router";
@@ -41,6 +41,7 @@ import { PreviousRouteContextProvider } from "../lib/previous-route";
 import { OidcAuthorizer } from "../components/OidcAuthorizer/OidcAuthorizer";
 import { ChangePassword } from "../components/ChangePassword/ChangePassword";
 import { getClientEnv } from "../lib/shared/clientEnv";
+import { basePathFetch, withBasePath } from "../lib/base-path";
 
 const log = getLog("app");
 
@@ -280,6 +281,7 @@ const queryClient = new QueryClient({
 });
 
 if (typeof window !== "undefined") {
+  rpc.useFetch(basePathFetch);
   window["queryClient"] = queryClient;
 }
 
@@ -324,7 +326,7 @@ function AppLoader({ children, pageProps }: PropsWithChildren<any>) {
             className="underline text-primary"
             href={`${data.publicEndpoints.protocol}://${data.publicEndpoints.host}${
               data.publicEndpoints.port ? `:${data.publicEndpoints.port}` : ""
-            }`}
+            }${withBasePath("/")}`}
           >
             Open management console
           </a>
@@ -346,13 +348,13 @@ function AppLoader({ children, pageProps }: PropsWithChildren<any>) {
             ? {
                 //debug: data?.logLevel === "debug",
                 debug: isTruish(clientEnv.NEXT_PUBLIC_TELEMETRY_DEBUG),
-                idEndpoint: "/api/id",
+                idEndpoint: withBasePath("/api/id"),
                 host: trackingHost,
               }
             : { disabled: true }
         }
       >
-        <SessionProvider session={pageProps.session}>
+        <SessionProvider session={pageProps.session} basePath={withBasePath("/api/auth")}>
           <LoginWrapper requiresLogin={!pageProps.publicPage}>{children}</LoginWrapper>
         </SessionProvider>
       </JitsuProvider>
@@ -593,10 +595,10 @@ export const App = ({ Component, pageProps }: AppProps) => {
   return (
     <AntdTheme>
       <Head>
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5" />
+        <link rel="apple-touch-icon" sizes="180x180" href={withBasePath("/apple-touch-icon.png")} />
+        <link rel="icon" type="image/png" sizes="32x32" href={withBasePath("/favicon-32x32.png")} />
+        <link rel="icon" type="image/png" sizes="16x16" href={withBasePath("/favicon-16x16.png")} />
+        <link rel="mask-icon" href={withBasePath("/safari-pinned-tab.svg")} color="#5bbad5" />
       </Head>
       <AntdModalProvider>
         {/*{loading && <LoadingBlur />}*/}

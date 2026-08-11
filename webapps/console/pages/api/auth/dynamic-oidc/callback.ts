@@ -12,6 +12,7 @@ import { redirectWithOidcError, OidcErrors } from "../../../../lib/server/oidc-e
 import { getServerEnv } from "../../../../lib/server/serverEnv";
 import { authAuditLog } from "../../../../lib/server/audit-log";
 import { trackAuthEvent } from "../../../../lib/server/telemetry";
+import { withBasePath } from "../../../../lib/base-path";
 
 const log = getServerLog("api/auth/dynamic-oidc/callback");
 
@@ -68,7 +69,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       req.headers["x-forwarded-protocol"] ||
       (req.url?.startsWith("https") ? "https" : "http");
     const serverEnv = getServerEnv();
-    const baseUrl = serverEnv.NEXTAUTH_URL || serverEnv.JITSU_PUBLIC || `${protocol}://${req.headers.host}`;
+    const baseUrl =
+      serverEnv.JITSU_PUBLIC_URL ||
+      serverEnv.JITSU_PUBLIC ||
+      serverEnv.NEXTAUTH_URL ||
+      `${protocol}://${req.headers.host}`;
     const redirectUri = `${baseUrl}/api/auth/dynamic-oidc/callback`;
 
     // Build token request parameters
@@ -306,7 +311,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // If no valid return URL, redirect to the user's first accessible workspace
     if (!redirectUrl) {
       const workspace = accessibleWorkspaces[0].workspace;
-      redirectUrl = `/${workspace.slug || workspace.id}`;
+      redirectUrl = withBasePath(`/${workspace.slug || workspace.id}`);
     }
 
     res.redirect(redirectUrl);

@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useConfigObjectLinks } from "../../lib/store";
 import { useQueryStringState } from "../../lib/useQueryStringState";
 import { EditorToolbar } from "../../components/EditorToolbar/EditorToolbar";
+import { withBasePath } from "../../lib/base-path";
 
 const log = getLog("services");
 
@@ -42,7 +43,9 @@ export const ServiceTitle: React.FC<{
       icon={
         <img
           alt={service?.package}
-          src={`/api/sources/logo?type=${service?.protocol}&package=${encodeURIComponent(service?.package ?? "")}`}
+          src={withBasePath(
+            `/api/sources/logo?type=${service?.protocol}&package=${encodeURIComponent(service?.package ?? "")}`
+          )}
         />
       }
       size={size}
@@ -140,7 +143,7 @@ const ServicesList: React.FC<{}> = () => {
     icon: s => (
       <img
         alt={s?.package}
-        src={`/api/sources/logo?type=${s?.protocol}&package=${encodeURIComponent(s?.package ?? "")}`}
+        src={withBasePath(`/api/sources/logo?type=${s?.protocol}&package=${encodeURIComponent(s?.package ?? "")}`)}
       />
     ),
     editorComponent: () => ServiceEditor,

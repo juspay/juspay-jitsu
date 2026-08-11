@@ -13,11 +13,19 @@ export const ClientEnvSchema = z.object({
   // Values: "debug", "info", "warn", "error"
   NEXT_PUBLIC_LOG_LEVEL: z.string().optional().default("info"),
 
+  // Optional path prefix when the console is hosted below a shared domain.
+  NEXT_PUBLIC_BASE_PATH: z
+    .string()
+    .regex(/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/)
+    .optional(),
+
   // Node environment - automatically inlined by Next.js at build time
   NODE_ENV: z.enum(["development", "production", "test"]).optional().default("production"),
 });
 
 export type ClientEnv = z.infer<typeof ClientEnvSchema>;
+
+export const clientBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 export function isBuilding() {
   return process.env.NEXT_PHASE && process.env.NEXT_PHASE.includes("build");
@@ -60,6 +68,7 @@ export function getClientEnv(): ClientEnv {
   const env = {
     NEXT_PUBLIC_TELEMETRY_DEBUG: process.env.NEXT_PUBLIC_TELEMETRY_DEBUG,
     NEXT_PUBLIC_LOG_LEVEL: process.env.NEXT_PUBLIC_LOG_LEVEL,
+    NEXT_PUBLIC_BASE_PATH: process.env.NEXT_PUBLIC_BASE_PATH,
     //yes, this is not mistake, it's available despite not having NEXT_PUBLIC_ prefix
     NODE_ENV: process.env.NODE_ENV,
   };
