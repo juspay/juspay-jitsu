@@ -143,6 +143,15 @@ COPY --from=builder /app/webapps/console/public ./webapps/console/public
 # This allows running management commands like: node /app/webapps/console/build/manage.js seed
 COPY --from=builder /app/webapps/console/build/manage.js ./webapps/console/build/
 
+# build/manage.js keeps @prisma/client external, so the final image must contain
+# both the Prisma runtime package and the client generated from schema.prisma.
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client@*/node_modules/@prisma/client/ ./node_modules/@prisma/client/
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/ ./node_modules/.prisma/client/
+
+# Catch missing Prisma runtime files while building the image instead of during
+# container startup, where it would prevent the initial administrator seed.
+RUN node -e "require('@prisma/client'); console.log('Prisma client runtime is available')"
+
 # Setup cron for scheduled tasks (e.g., cleanup, analytics aggregation)
 # chmod 0644: cron requires specific permissions (owner read/write, others read)
 # crontab: Install the cron schedule
