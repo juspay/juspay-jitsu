@@ -577,7 +577,9 @@ function useProfileBuilderData(
       .then(res => res.profileBuilders)
       .then(profileBuilders => {
         let status: ProfileBuilderStatus = "incomplete";
-        if (billing.enabled) {
+        if (appConfig.profileBuilder.operatorlessEnabled) {
+          setEnabled(true);
+        } else if (billing.enabled) {
           if (billing.settings?.profileBuilderEnabled) {
             setEnabled(true);
           }
@@ -623,6 +625,7 @@ function useProfileBuilderData(
     billing.loading,
     workspace,
     billing.settings,
+    appConfig.profileBuilder.operatorlessEnabled,
     refreshDate.getTime(),
     canEdit,
     maintenanceActive,

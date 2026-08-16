@@ -370,13 +370,16 @@ async function processProfile(
     const currentWorkspace = ws?.getObject(workspaceId);
     const currentPb = currentWorkspace?.profileBuilders?.find((pb: any) => pb.id === profileBuilder.id);
     const functionsServerInfo = (currentPb as any)?.functionsServer as { deploymentId: string } | undefined;
-    if (!functionsServerInfo?.deploymentId) {
+    const fallbackUrl = serverEnv.FUNCTIONS_SERVER_FALLBACK_URL?.replace(/\/$/, "");
+    if (!functionsServerInfo?.deploymentId && !fallbackUrl) {
       throw new Error(`No functions server deployment configured for profile builder ${profileBuilder.id}`);
     }
 
-    // Call functions server to execute profile builder chain
-    const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
-    const baseUrl = template.replace("${workspaceId}", functionsServerInfo.deploymentId);
+    // Operator-managed installations use the deployment template. A fixed
+    // operatorless Functions Server is shared by all workspaces.
+    const baseUrl = functionsServerInfo?.deploymentId
+      ? serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE.replace("${workspaceId}", functionsServerInfo.deploymentId)
+      : fallbackUrl!;
     const url = `${baseUrl}/profile/${profileBuilder.id}`;
     const fsTimeoutMs = parseNumber(serverEnv.FUNCTIONS_SERVER_TIMEOUT_MS, 30000);
 

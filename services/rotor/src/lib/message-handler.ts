@@ -19,7 +19,9 @@ import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } 
 import { Redis } from "ioredis";
 import { fromJitsuClassic } from "@jitsu/functions-lib";
 import { mongoAnonymousEventsStore } from "./mongodb";
+import { getServerEnv } from "../serverEnv";
 const log = getLog("rotor");
+const operatorlessConnectionsWarned = new Set<string>();
 
 const anonymousEventsStore = mongoAnonymousEventsStore();
 
@@ -58,6 +60,7 @@ export async function rotorMessageHandler(
   retries: number = 0,
   fetchTimeoutMs: number = 2000
 ) {
+  const serverEnv = getServerEnv();
   if (!message) {
     return;
   }
@@ -135,12 +138,24 @@ export async function rotorMessageHandler(
     retries,
   };
 
-  // Use functionsServer info provided by the console export
-  const functionsServer = connection.options?.functionsServer as
+  // Prefer functionsServer info provided by the Console export. Operatorless
+  // installations can use one fixed internal server instead.
+  let functionsServer = connection.options?.functionsServer as
     | { deploymentId: string; status: "functions" | "empty" | "missing" }
     | undefined;
 
-  if (!functionsServer) {
+  const allowMissingFunctionsServer = serverEnv.ROTOR_ALLOW_MISSING_FUNCTIONS_SERVER === "true";
+  const hasUdfFunctions = (connection.options?.functions || []).some((f: any) => f.functionId?.startsWith("udf."));
+  if (hasUdfFunctions && serverEnv.FUNCTIONS_SERVER_FALLBACK_URL && functionsServer?.status !== "functions") {
+    functionsServer = { deploymentId: "operatorless", status: "functions" };
+    if (!operatorlessConnectionsWarned.has(connection.id)) {
+      operatorlessConnectionsWarned.add(connection.id);
+      log
+        .atInfo()
+        .log(`[${connection.id}] Using fixed operatorless Functions Server for workspace ${connection.workspaceId}.`);
+    }
+  }
+  if (!functionsServer && !allowMissingFunctionsServer) {
     log
       .atError()
       .log(
@@ -148,7 +163,25 @@ export async function rotorMessageHandler(
       );
     return undefined;
   }
-  if (functionsServer.status === "missing") {
+  if (!functionsServer && hasUdfFunctions) {
+    log
+      .atError()
+      .log(
+        `[${connection.id}] UDF functions are configured but no functionsServer info is available for workspace ${connection.workspaceId}. Dropping event.`
+      );
+    return undefined;
+  }
+  if (!functionsServer) {
+    if (!operatorlessConnectionsWarned.has(connection.id)) {
+      operatorlessConnectionsWarned.add(connection.id);
+      log
+        .atWarn()
+        .log(
+          `[${connection.id}] No functionsServer info for workspace ${connection.workspaceId}; continuing without UDF functions because ROTOR_ALLOW_MISSING_FUNCTIONS_SERVER=true.`
+        );
+    }
+  }
+  if (functionsServer?.status === "missing") {
     log
       .atError()
       .log(
@@ -158,17 +191,32 @@ export async function rotorMessageHandler(
     return undefined;
   }
   // skipUdf: when "empty" — connection has no UDF functions, skip UDF step entirely
-  const skipUdf = functionsServer.status === "empty";
+  const skipUdf = !functionsServer || functionsServer.status === "empty";
+  const effectiveConnection =
+    functionsServer === connection.options?.functionsServer
+      ? connection
+      : {
+          ...connection,
+          options: { ...connection.options, functionsServer },
+        };
+  ctx.connection.options = effectiveConnection.options;
 
   let lastUpdated = Math.max(
-    new Date(connection.updatedAt || 0).getTime(),
-    new Date(connection.options?.workspaceUpdatedAt || 0).getTime()
+    new Date(effectiveConnection.updatedAt || 0).getTime(),
+    new Date(effectiveConnection.options?.workspaceUpdatedAt || 0).getTime()
   );
   const cacheKey = `${connection.id}_${lastUpdated}_${functionsServer?.deploymentId}_${functionsServer?.status}`;
   let funcChain: FuncChain | undefined = funcsChainCache.get(cacheKey);
   if (!funcChain) {
     log.atDebug().log(`[${connection.id}] Refreshing function chain. Dt: ${lastUpdated}`);
-    funcChain = buildFunctionChain(skipUdf, connection, connStore, rotorContext, anonymousEventsStore, fetchTimeoutMs);
+    funcChain = buildFunctionChain(
+      skipUdf,
+      effectiveConnection,
+      connStore,
+      rotorContext,
+      anonymousEventsStore,
+      fetchTimeoutMs
+    );
     funcsChainCache.set(cacheKey, funcChain);
   }
 

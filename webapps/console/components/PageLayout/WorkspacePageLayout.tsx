@@ -470,7 +470,7 @@ function PageHeader() {
         { title: "Custom Images", path: "/custom-images", icon: <FaDocker className="w-full h-full" /> },
       ],
     },
-    appConfig.ee?.available && {
+    (appConfig.ee?.available || appConfig.profileBuilder.operatorlessEnabled) && {
       title: "Customers",
       icon: <User className="w-full h-full" />,
       items: [{ title: "Profile Builder", path: "/profile-builder", icon: <UserRoundPen className="w-full h-full" /> }],
@@ -483,12 +483,11 @@ function PageHeader() {
       items: [
         { title: "Live Events", path: "/data", icon: <Activity className="w-full h-full" /> },
         { title: "Query Data", path: "/sql", icon: <Terminal className="w-full h-full" />, hidden: !appConfig?.ee },
-        appConfig.ee?.available
+        appConfig.eventStatsEnabled
           ? {
               title: "Event Statistics",
               path: "/event-stat",
               icon: <LineChart className="w-full h-full" />,
-              hidden: !appConfig?.ee,
             }
           : undefined,
       ],

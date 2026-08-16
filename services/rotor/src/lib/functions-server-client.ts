@@ -36,7 +36,11 @@ export function getFunctionsServerUrl(deploymentId: string, connectionId: string
   // reload it here for tests. In tests we reset serverEnv cache to dynamically set FS server port
   const serverEnv = getServerEnv();
   const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
-  const baseUrl = template.replace("${workspaceId}", deploymentId);
+  const baseUrl = (
+    deploymentId === "operatorless" && serverEnv.FUNCTIONS_SERVER_FALLBACK_URL
+      ? serverEnv.FUNCTIONS_SERVER_FALLBACK_URL
+      : template.replace("${workspaceId}", deploymentId)
+  ).replace(/\/$/, "");
   return `${baseUrl}/connection/${connectionId}`;
 }
 

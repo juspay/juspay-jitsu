@@ -193,6 +193,15 @@ const ServerEnvSchema = ClientEnvSchema.extend({
 
   // Functions server URL template (use ${workspaceId} as placeholder)
   FUNCTIONS_SERVER_URL_TEMPLATE: z.string().default("http://fs-${workspaceId}:3456"),
+  // Fixed Functions Server for installations that do not run the Kubernetes
+  // operator and therefore have no FunctionsServer database assignments.
+  FUNCTIONS_SERVER_FALLBACK_URL: z.string().optional(),
+  // Enable Profile Builder in self-hosted/operatorless installations. This
+  // replaces the cloud billing entitlement, but does not enable unrelated EE
+  // features.
+  PROFILE_BUILDER_ENABLED: z.string().default("false").transform(isTruish),
+  // Expose the locally-backed Event Statistics page without requiring ee-api.
+  EVENT_STAT_ENABLED: z.string().default("false").transform(isTruish),
 
   // Default functions class when workspace has no explicit setting
   DEFAULT_FUNCTIONS_CLASS: z.string().optional().default("free"),

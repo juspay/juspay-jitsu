@@ -1,5 +1,82 @@
 # Functions Server Deployment & Routing
 
+## Operatorless Fixed Service
+
+Installations that cannot grant the Jitsu Operator Kubernetes RBAC can run one
+pre-provisioned Functions Server and route all custom event functions to it.
+This mode does not create or mutate Kubernetes resources.
+
+Configure the Functions Server with:
+
+```env
+PORT=3456
+FUNCTIONS_CLASS=dedicated
+FUNCTIONS_SERVER_REMOTE_CONFIG=true
+DEPLOYMENT_ID=operatorless-shared
+REPOSITORY_BASE_URL=http://console-service/jitsu/api/admin/export
+REPOSITORY_AUTH_TOKEN=service-admin-account:<token>
+REPOSITORY_REFRESH_PERIOD_SEC=5
+REPOSITORY_CACHE_DIR=/tmp/cache
+```
+
+Configure both Rotor and Console with the fixed internal address:
+
+```env
+FUNCTIONS_SERVER_FALLBACK_URL=http://functions-service
+```
+
+For connections without UDFs, Rotor can continue without Operator metadata when
+`ROTOR_ALLOW_MISSING_FUNCTIONS_SERVER=true` is set. For connections with UDFs,
+Rotor injects an operatorless deployment identifier and calls the fixed service.
+
+The Functions Server reuses Jitsu's repository polling, authenticated exports,
+`If-Modified-Since` handling, local last-known-good cache and retry behavior. It
+builds a changed connection or Profile Builder runtime lazily and swaps it in
+only after compilation succeeds, so published edits become active without
+restarting the Pod. Remote hot reload requires `FUNCTIONS_CLASS=dedicated`.
+
+## Operatorless Profile Builder
+
+Enable the Profile Builder UI in Console without enabling unrelated enterprise
+features:
+
+```env
+PROFILE_BUILDER_ENABLED=true
+FUNCTIONS_SERVER_FALLBACK_URL=http://functions-service
+```
+
+Run one separately scalable Rotor process in Profile Builder mode:
+
+```env
+ROTOR_MODE=profiles
+ROTOR_HTTP_PORT=3401
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+DATABASE_URL=postgresql://.../postgres?schema=newjitsu
+MONGODB_URL=mongodb://...
+REPOSITORY_BASE_URL=http://console-service/jitsu/api/admin/export
+REPOSITORY_AUTH_TOKEN=service-admin-account:<token>
+FUNCTIONS_SERVER_FALLBACK_URL=http://functions-service
+BULKER_URL=http://ingest-service/internal/bulker
+BULKER_AUTH_KEY=<raw-ingest-and-bulker-token>
+```
+
+When Bulker is an Ingest sidecar rather than a separately addressable Service,
+enable the authenticated internal proxy in Ingest:
+
+```env
+INGEST_BULKER_PROXY_URL=http://127.0.0.1:3042
+```
+
+The profile worker polls `workspaces-with-profiles`, automatically starts every
+published builder (`version > 0`), and replaces changed versions without a Pod
+restart. A matching builder ID is not supplied with each event: Console attaches
+all published builders in the workspace to the stream export. The event must
+contain `JITSU_PROFILE_ID` or `userId`; events without a profile identity cannot
+be aggregated into a customer profile.
+
+The profile worker and Functions Server are internal services. They do not need
+a public VirtualService route or Kubernetes RBAC.
+
 ## Database Schema
 
 ```sql

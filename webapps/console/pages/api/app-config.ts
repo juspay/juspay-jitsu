@@ -64,6 +64,10 @@ export default createRoute()
         available: eeBrowserAvailable,
         host: eeBrowserAvailable ? getEeConnection().host : undefined,
       },
+      profileBuilder: {
+        operatorlessEnabled: serverEnv.PROFILE_BUILDER_ENABLED,
+      },
+      eventStatsEnabled: eeBrowserAvailable || serverEnv.EVENT_STAT_ENABLED,
       disableSignup: isSignupDisabled(),
       // Display-only hint for the signup form (JITSU-70). Enforcement stays
       // server-side; the browser never gets the personal-domain list.

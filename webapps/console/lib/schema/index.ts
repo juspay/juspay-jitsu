@@ -160,6 +160,10 @@ export const AppConfig = z.object({
     available: z.boolean(),
     host: z.string().optional(),
   }),
+  profileBuilder: z.object({
+    operatorlessEnabled: z.boolean(),
+  }),
+  eventStatsEnabled: z.boolean(),
   billingEnabled: z.boolean(),
   /** Segment/RudderStack migration analyzer entry points (JITSU-131). Gated by
    * the MIGRATION_WIZARD_ENABLED env var; implies ee.available. */

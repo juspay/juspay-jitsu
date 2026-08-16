@@ -215,9 +215,10 @@ ENV JITSU_VERSION_STRING=${JITSU_BUILD_VERSION}
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 # ============================================================================
-# FUNCTIONS-SERVER STAGE - Deno-based UDF execution with Web Worker isolation
+# FUNCTIONS-SERVER STAGE - Deno-based UDF execution
 # ============================================================================
-# Sandboxed functions execution for free-tier workspaces
+# Supports Web Worker isolation for file-based free-tier deployments and
+# in-process runtimes for dedicated/operatorless deployments.
 FROM denoland/deno:debian AS functions-server
 
 ARG JITSU_BUILD_VERSION=dev,
@@ -231,7 +232,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-EXPOSE 3401
+ENV PORT=3456
+EXPOSE 3456
 
 # Copy Deno-specific build artifacts from builder
 COPY --from=builder /app/services/rotor/dist/functions-server.mjs ./functions-server.mjs
@@ -247,7 +249,7 @@ ENV JITSU_VERSION_DOCKER_TAG=${JITSU_BUILD_DOCKER_TAG}
 ENV JITSU_VERSION_STRING=${JITSU_BUILD_VERSION}
 ENV NODE_ENV=production
 
-HEALTHCHECK CMD curl --fail http://localhost:3401/health || exit 1
+HEALTHCHECK CMD curl --fail http://localhost:3456/health || exit 1
 
 ENTRYPOINT ["deno", "run", \
   "--allow-net", \

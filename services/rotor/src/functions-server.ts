@@ -38,6 +38,13 @@ import type {
 } from "./lib/worker-protocol";
 import { runUdfInWorker } from "./lib/worker-udf-runner";
 import {
+  connectionsStore as repositoryConnectionsStore,
+  functionsStore as repositoryFunctionsStore,
+  workspacesStore as repositoryWorkspacesStore,
+} from "./lib/repositories";
+import {
+  CompiledProfileBuilder,
+  ProfileBuilderConfig,
   loadProfileBuilders,
   initProfileBuilderRuntimes,
   runProfileBuilder,
@@ -994,20 +1001,37 @@ async function main() {
   }
   const port = parseInt(env.PORT);
   const configDir = path.resolve(env.CONFIG_DIR);
+  const remoteConfigEnabled = isTruish(env.FUNCTIONS_SERVER_REMOTE_CONFIG);
 
-  // Load configs from files
-  log.atInfo().log(`Loading configs from files: ${configDir}`);
-
-  let { connections, functions } = await loadConfigsFromFiles(configDir);
+  let connections: Map<string, EnrichedConnectionConfig>;
+  let functions: Map<string, FunctionConfig>;
+  if (remoteConfigEnabled) {
+    if (!env.REPOSITORY_BASE_URL) {
+      throw new Error("FUNCTIONS_SERVER_REMOTE_CONFIG requires REPOSITORY_BASE_URL");
+    }
+    log.atInfo().log(`Loading configs from Console repository: ${env.REPOSITORY_BASE_URL}`);
+    const [connectionRepository, functionRepository] = await Promise.all([
+      repositoryConnectionsStore.get(),
+      repositoryFunctionsStore.get(),
+      repositoryWorkspacesStore.get(),
+    ]);
+    connections = new Map(Object.entries(connectionRepository.getAll()));
+    functions = new Map(Object.entries(functionRepository.getAll()));
+  } else {
+    log.atInfo().log(`Loading configs from files: ${configDir}`);
+    ({ connections, functions } = await loadConfigsFromFiles(configDir));
+  }
   const conEntityStore: EntityStore<EnrichedConnectionConfig> = {
     getObject: (id: string) => {
-      return connections.get(id);
+      return remoteConfigEnabled ? repositoryConnectionsStore.getCurrent()?.getObject(id) : connections.get(id);
     },
     getAll() {
-      return Object.fromEntries(connections);
+      return remoteConfigEnabled
+        ? repositoryConnectionsStore.getCurrent()?.getAll() || {}
+        : Object.fromEntries(connections);
     },
     toJSON() {
-      return JSON.stringify(Object.fromEntries(connections));
+      return JSON.stringify(this.getAll());
     },
     enabled: true,
   };
@@ -1017,10 +1041,19 @@ async function main() {
   }
 
   const runtimes = new Map<string, FunctionRuntime>();
+  const runtimeVersions = new Map<string, string>();
+  const runtimeBuilds = new Map<string, { version: string; promise: Promise<FunctionRuntime> }>();
+  const runtimeBuildGenerations = new Map<string, number>();
   const isFreeClass = env.FUNCTIONS_CLASS === "free";
   let workerPool: LazyWorkerPool | undefined;
 
-  if (isFreeClass) {
+  if (remoteConfigEnabled && isFreeClass) {
+    throw new Error(
+      "FUNCTIONS_SERVER_REMOTE_CONFIG currently requires FUNCTIONS_CLASS=dedicated so runtimes can be hot-reloaded atomically"
+    );
+  }
+
+  if (!remoteConfigEnabled && isFreeClass) {
     // Free tier: pre-compile UDFs to IIFE strings, but spawn workers lazily on first request.
     // Workers are evicted after WORKER_TTL_MS of inactivity.
     const workspaceConnections = new Map<string, WorkerConnectionInit[]>();
@@ -1108,7 +1141,7 @@ async function main() {
         }
       }
     }, 60000);
-  } else {
+  } else if (!remoteConfigEnabled) {
     // Non-free: prebuild function chains in main process
     if (connections.size > 0) {
       log.atInfo().log(`Prebuilding function chains for ${connections.size} connections...`);
@@ -1129,19 +1162,161 @@ async function main() {
     }
   }
 
+  const getRuntime = async (connectionId: string): Promise<FunctionRuntime | undefined> => {
+    if (!remoteConfigEnabled) {
+      return runtimes.get(connectionId);
+    }
+
+    const connectionRepository = repositoryConnectionsStore.getCurrent();
+    const functionRepository = repositoryFunctionsStore.getCurrent();
+    const connection = connectionRepository?.getObject(connectionId);
+    if (!connection || !functionRepository) {
+      return undefined;
+    }
+
+    const udfFunctionIds: string[] = ((connection.options as any)?.functions || [])
+      .filter((f: any) => f.functionId?.startsWith("udf."))
+      .map((f: any) => f.functionId.substring(4));
+    const functionVersions = udfFunctionIds.map((functionId: string) => {
+      const fn = functionRepository.getObject(functionId);
+      return [functionId, fn?.updatedAt || "", fn?.codeHash || ""];
+    });
+    const version = JSON.stringify([
+      connection.updatedAt || "",
+      connection.optionsHash || "",
+      connection.credentialsHash || "",
+      functionVersions,
+    ]);
+
+    const existing = runtimes.get(connectionId);
+    if (existing && runtimeVersions.get(connectionId) === version) {
+      return existing;
+    }
+
+    const pending = runtimeBuilds.get(connectionId);
+    if (pending?.version === version) {
+      return await pending.promise;
+    }
+
+    const generation = (runtimeBuildGenerations.get(connectionId) || 0) + 1;
+    runtimeBuildGenerations.set(connectionId, generation);
+    const build = (async () => {
+      const functionConfigs = new Map<string, FunctionConfig>(Object.entries(functionRepository.getAll()));
+      const chain = await buildFunctionChain(conEntityStore, connection, functionConfigs);
+      const runtime = new InProcessRuntime(chain);
+      if (runtimeBuildGenerations.get(connectionId) === generation) {
+        runtimes.set(connectionId, runtime);
+        runtimeVersions.set(connectionId, version);
+        log.atInfo().log(`Hot-loaded function runtime for connection ${connectionId}`);
+      } else {
+        log.atDebug().log(`Discarded stale function runtime build for connection ${connectionId}`);
+      }
+      return runtime;
+    })();
+    runtimeBuilds.set(connectionId, { version, promise: build });
+    try {
+      return await build;
+    } finally {
+      if (runtimeBuilds.get(connectionId)?.promise === build) {
+        runtimeBuilds.delete(connectionId);
+      }
+    }
+  };
+
   // Functions map is no longer needed after prebuilding (code is compiled into IIFE strings / chains)
   functions.clear();
   log.atInfo().log(`Cleared functions map`);
 
-  // Load and initialize profile builders
-  const profileBuilderConfigs = await loadProfileBuilders(configDir);
   const pbStoreMetrics: StoreMetrics = {
     storeStatus: (namespace, operation, status) =>
       promStoreStatuses.labels(deploymentId, namespace, operation, status).inc(),
     warehouseStatus: (id, table, status, timeMs) =>
       promWarehouseStatuses.labels(deploymentId, id, table, status).observe(timeMs / 1000),
   };
-  const profileBuilderRuntimes = await initProfileBuilderRuntimes(profileBuilderConfigs, deploymentId, pbStoreMetrics);
+  const profileBuilderConfigs = remoteConfigEnabled
+    ? new Map<string, ProfileBuilderConfig>()
+    : await loadProfileBuilders(configDir);
+  const profileBuilderRuntimes: Map<string, CompiledProfileBuilder> = remoteConfigEnabled
+    ? new Map()
+    : await initProfileBuilderRuntimes(profileBuilderConfigs, deploymentId, pbStoreMetrics);
+  const profileBuilderRuntimeVersions = new Map<string, string>();
+  const profileBuilderRuntimeBuilds = new Map<
+    string,
+    { version: string; promise: Promise<CompiledProfileBuilder | undefined> }
+  >();
+  const profileBuilderRuntimeBuildGenerations = new Map<string, number>();
+
+  const getRemoteProfileBuilder = (profileBuilderId: string): ProfileBuilderConfig | undefined => {
+    const workspaces = repositoryWorkspacesStore.getCurrent()?.getAll() || {};
+    for (const workspace of Object.values(workspaces)) {
+      const profileBuilder = workspace.profileBuilders?.find(pb => pb.id === profileBuilderId);
+      if ((profileBuilder?.version || 0) > 0) {
+        return profileBuilder as unknown as ProfileBuilderConfig;
+      }
+    }
+    return undefined;
+  };
+
+  const getProfileBuilderRuntime = async (profileBuilderId: string): Promise<CompiledProfileBuilder | undefined> => {
+    if (!remoteConfigEnabled) {
+      return profileBuilderRuntimes.get(profileBuilderId);
+    }
+
+    const profileBuilder = getRemoteProfileBuilder(profileBuilderId);
+    if (!profileBuilder) {
+      return undefined;
+    }
+    const version = JSON.stringify([
+      profileBuilder.version,
+      profileBuilder.updatedAt || "",
+      profileBuilder.destinationId || "",
+      profileBuilder.connectionOptions || {},
+      profileBuilder.intermediateStorageCredentials || {},
+      (profileBuilder.functions || []).map(fn => [fn.id, fn.updatedAt || "", fn.codeHash || "", fn.code || ""]),
+    ]);
+
+    const existing = profileBuilderRuntimes.get(profileBuilderId);
+    if (existing && profileBuilderRuntimeVersions.get(profileBuilderId) === version) {
+      return existing;
+    }
+
+    const pending = profileBuilderRuntimeBuilds.get(profileBuilderId);
+    if (pending?.version === version) {
+      return await pending.promise;
+    }
+
+    const generation = (profileBuilderRuntimeBuildGenerations.get(profileBuilderId) || 0) + 1;
+    profileBuilderRuntimeBuildGenerations.set(profileBuilderId, generation);
+    const build = (async () => {
+      const compiled = await initProfileBuilderRuntimes(
+        new Map([[profileBuilderId, profileBuilder]]),
+        deploymentId,
+        pbStoreMetrics,
+        true
+      );
+      const runtime = compiled.get(profileBuilderId);
+      if (runtime && profileBuilderRuntimeBuildGenerations.get(profileBuilderId) === generation) {
+        profileBuilderRuntimes.set(profileBuilderId, runtime);
+        profileBuilderRuntimeVersions.set(profileBuilderId, version);
+        log.atInfo().log(`Hot-loaded profile builder runtime ${profileBuilderId} v${profileBuilder.version}`);
+      } else if (runtime) {
+        log.atDebug().log(`Discarded stale profile builder runtime build for ${profileBuilderId}`);
+      }
+      if (!runtime && existing) {
+        log.atWarn().log(`Keeping last-known-good profile builder runtime ${profileBuilderId}`);
+        return existing;
+      }
+      return runtime;
+    })();
+    profileBuilderRuntimeBuilds.set(profileBuilderId, { version, promise: build });
+    try {
+      return await build;
+    } finally {
+      if (profileBuilderRuntimeBuilds.get(profileBuilderId)?.promise === build) {
+        profileBuilderRuntimeBuilds.delete(profileBuilderId);
+      }
+    }
+  };
   log.atInfo().log(`Initialized ${profileBuilderRuntimes.size} profile builder runtimes`);
 
   // HTTP response helpers
@@ -1158,12 +1333,26 @@ async function main() {
 
   // Health check handler: GET /health or GET /
   function handleHealth(): Response {
+    const currentConnections = remoteConfigEnabled
+      ? repositoryConnectionsStore.getCurrent()?.getAll() || {}
+      : Object.fromEntries(connections);
     return jsonResponse(200, {
       status: "ok",
       configDir,
-      connections: Array.from(connections.keys()),
+      configSource: remoteConfigEnabled ? "repository" : "files",
+      repositoryStatus: remoteConfigEnabled
+        ? {
+            connections: repositoryConnectionsStore.status(),
+            functions: repositoryFunctionsStore.status(),
+            workspaces: repositoryWorkspacesStore.status(),
+          }
+        : undefined,
+      connections: Object.keys(currentConnections),
       runtimes: Array.from(runtimes.keys()),
       profileBuilders: Array.from(profileBuilderRuntimes.keys()),
+      profileBuilderVersions: Object.fromEntries(
+        Array.from(profileBuilderRuntimes.entries()).map(([id, runtime]) => [id, runtime.config.version])
+      ),
       activeWorkers: workerPool ? workerPool.getActiveWorkers().map(w => w.id) : undefined,
     });
   }
@@ -1186,7 +1375,7 @@ async function main() {
     }
 
     // actorId = streamId of first connection (for metrics)
-    const firstRuntime = runtimes.get(connectionIds[0]);
+    const firstRuntime = await getRuntime(connectionIds[0]);
     const actorId = firstRuntime?.getConnection()?.streamId || connectionIds[0] || "";
 
     const message = (await parseBody(req)) as IngestMessage;
@@ -1205,7 +1394,7 @@ async function main() {
     // Process all connections in parallel
     const promises = connectionIds.map(async (connectionId): Promise<StrictFuncChainResult> => {
       try {
-        const runtime = runtimes.get(connectionId);
+        const runtime = await getRuntime(connectionId);
         if (!runtime) {
           return {
             connectionId,
@@ -1288,7 +1477,7 @@ async function main() {
       ? parseNumber(timeoutHeader, 2000)
       : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
 
-    const runtime = runtimes.get(connectionId);
+    const runtime = await getRuntime(connectionId);
     if (!runtime) {
       return { response: errorResponse(404, `Connection '${connectionId}' not found`), actorId: connectionId };
     }
@@ -1306,7 +1495,7 @@ async function main() {
       return { response: errorResponse(405, "Method not allowed. Use POST."), actorId: profileBuilderId };
     }
 
-    const compiledPb = profileBuilderRuntimes.get(profileBuilderId);
+    const compiledPb = await getProfileBuilderRuntime(profileBuilderId);
     if (!compiledPb) {
       return {
         response: errorResponse(404, `Profile builder '${profileBuilderId}' not found`),
@@ -1516,6 +1705,12 @@ async function main() {
       // Terminate all workspace workers
       if (workerPool) {
         workerPool.terminateAll();
+      }
+
+      if (remoteConfigEnabled) {
+        repositoryConnectionsStore.stop();
+        repositoryFunctionsStore.stop();
+        repositoryWorkspacesStore.stop();
       }
 
       // Close profile builder MongoDB connections

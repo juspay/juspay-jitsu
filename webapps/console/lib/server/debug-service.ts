@@ -231,10 +231,14 @@ export class DebugService {
         return record.deploymentId;
       }
     }
-    return undefined;
+    return getServerEnv().FUNCTIONS_SERVER_FALLBACK_URL ? "operatorless" : undefined;
   }
 
   private functionsServerUrl(deploymentId: string, path: string): string {
+    const fallbackUrl = getServerEnv().FUNCTIONS_SERVER_FALLBACK_URL;
+    if (deploymentId === "operatorless" && fallbackUrl) {
+      return fallbackUrl.replace(/\/$/, "") + path;
+    }
     const template = requireDefined(
       getServerEnv().FUNCTIONS_SERVER_URL_TEMPLATE,
       "env FUNCTIONS_SERVER_URL_TEMPLATE is not set. Functions server is required to run functions"

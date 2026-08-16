@@ -53,6 +53,9 @@ type Config struct {
 	FunctionsServerURLTemplate string `mapstructure:"FUNCTIONS_SERVER_URL_TEMPLATE" default:"http://fs-${workspaceId}:3456"`
 	DefaultFunctionsClass      string `mapstructure:"DEFAULT_FUNCTIONS_CLASS" default:"free"`
 	DeviceFunctionsTimeoutMs   int    `mapstructure:"DEVICE_FUNCTIONS_TIMEOUT_MS" default:"200"`
+	// Optional in-pod Bulker endpoint exposed through an authenticated internal
+	// Ingest path for operatorless Profile Builder workers.
+	BulkerProxyURL string `mapstructure:"BULKER_PROXY_URL"`
 
 	MetricsPort int `mapstructure:"METRICS_PORT" default:"9091"`
 

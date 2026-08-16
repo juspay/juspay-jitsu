@@ -163,7 +163,8 @@ export async function loadProfileBuilders(configDir: string): Promise<Map<string
 export async function initProfileBuilderRuntimes(
   profileBuilders: Map<string, ProfileBuilderConfig>,
   deploymentId: string,
-  storeMetrics: StoreMetrics
+  storeMetrics: StoreMetrics,
+  strictCompilation = false
 ): Promise<Map<string, CompiledProfileBuilder>> {
   const compiled = new Map<string, CompiledProfileBuilder>();
 
@@ -182,6 +183,9 @@ export async function initProfileBuilderRuntimes(
           log.atInfo().log(`  ✓ Compiled profile UDF: ${fn.id} for builder ${pbId}`);
         } catch (e: any) {
           log.atError().log(`  ✗ Failed to compile profile UDF ${fn.id}: ${e.message}`);
+          if (strictCompilation) {
+            throw e;
+          }
           udfFunctions.push({
             id: fn.id,
             exec: async () => {
