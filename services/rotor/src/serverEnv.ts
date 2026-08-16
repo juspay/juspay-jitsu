@@ -80,6 +80,15 @@ const ServerEnvSchema = z.object({
   // Service name uses prefix to ensure it starts with letter (workspaceId may start with number)
   FUNCTIONS_SERVER_URL_TEMPLATE: z.string().default("http://fs-${workspaceId}:3456"),
   FUNCTIONS_SERVER_TIMEOUT_MS: z.string().optional().default("30000"),
+  // Fixed Functions Server used when the Kubernetes operator did not inject
+  // per-workspace routing information into Console exports.
+  FUNCTIONS_SERVER_FALLBACK_URL: z.string().optional(),
+  // Load connections/functions directly from the authenticated Console
+  // repository and hot-reload them without restarting the process.
+  FUNCTIONS_SERVER_REMOTE_CONFIG: z.string().optional().default("false"),
+  // Allow connections without UDF transformations to proceed when the
+  // Operator did not add functionsServer metadata.
+  ROTOR_ALLOW_MISSING_FUNCTIONS_SERVER: z.string().optional().default("false"),
 
   // Authentication Configuration
   ROTOR_AUTH_TOKENS: z.string().optional(),

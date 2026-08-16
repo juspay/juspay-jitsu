@@ -70,7 +70,11 @@ export async function writeTestConfigs(
 /**
  * Start a functions-server process for testing
  */
-export async function startTestFunctionsServer(configDir: string, port: number = 3457): Promise<TestFunctionsServer> {
+export async function startTestFunctionsServer(
+  configDir: string,
+  port: number = 3457,
+  envOverrides: NodeJS.ProcessEnv = {}
+): Promise<TestFunctionsServer> {
   // Build the rotor first if needed (functions-server is part of rotor)
   const rotorDir = path.resolve(__dirname, "..");
 
@@ -82,6 +86,7 @@ export async function startTestFunctionsServer(configDir: string, port: number =
     CONFIG_DIR: configDir,
     ROTOR_MODE: "functions",
     LOG_FORMAT: "text",
+    ...envOverrides,
   };
 
   const serverProcess = spawn(

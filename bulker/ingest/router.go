@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/http/pprof"
 	"net/url"
 	"regexp"
@@ -59,6 +60,7 @@ type Router struct {
 	httpClient        *http.Client
 	dataHosts         []string
 	partitionSelector kafkabase.PartitionSelector
+	bulkerProxy       *httputil.ReverseProxy
 }
 
 type IngestType string
@@ -156,6 +158,16 @@ func NewRouter(appContext *Context, partitionSelector kafkabase.PartitionSelecto
 		partitionSelector: partitionSelector,
 	}
 	engine := router.Engine()
+	if appContext.config.BulkerProxyURL != "" {
+		proxy, err := newBulkerProxy(appContext.config.BulkerProxyURL)
+		if err != nil {
+			base.Fatalf("Failed to configure Bulker proxy: %v", err)
+		}
+		router.bulkerProxy = proxy
+		// This path is intentionally not in noAuthPaths: appbase auth middleware
+		// requires the same Bearer token used by direct Bulker clients.
+		engine.Any("/internal/bulker/*path", router.BulkerProxyHandler)
+	}
 	// get global Monitor object
 	m := ginmetrics.GetMonitor()
 	m.SetSlowTime(1)
@@ -214,6 +226,42 @@ func NewRouter(appContext *Context, partitionSelector kafkabase.PartitionSelecto
 	engine.GET("/debug/pprof", gin.WrapF(pprof.Index))
 
 	return router
+}
+
+const internalBulkerPathPrefix = "/internal/bulker"
+
+func newBulkerProxy(targetURL string) (*httputil.ReverseProxy, error) {
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid BULKER_PROXY_URL %q: %w", targetURL, err)
+	}
+	if target.Scheme == "" || target.Host == "" {
+		return nil, fmt.Errorf("invalid BULKER_PROXY_URL %q: absolute http(s) URL is required", targetURL)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	director := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, internalBulkerPathPrefix)
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
+		director(req)
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, proxyErr error) {
+		logging.Errorf("Bulker proxy request failed: %v", proxyErr)
+		http.Error(w, "Bulker upstream unavailable", http.StatusBadGateway)
+	}
+	return proxy, nil
+}
+
+func (r *Router) BulkerProxyHandler(c *gin.Context) {
+	if r.bulkerProxy == nil {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Bulker proxy is disabled"})
+		return
+	}
+	c.Set(appbase.ContextLoggerName, "bulker-proxy")
+	r.bulkerProxy.ServeHTTP(c.Writer, c.Request)
+	c.Abort()
 }
 
 func (r *Router) CorsMiddleware(c *gin.Context) {
