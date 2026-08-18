@@ -1,5 +1,6 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { getServerLog } from "./log";
+import { getSupportedClickhouseSettings } from "./clickhouse-settings";
 
 const log = getServerLog("events-log-init");
 
@@ -112,6 +113,23 @@ export async function initEventsLogTables(opts: EventsLogInitOptions): Promise<v
     log.atError().withCause(e).log(`Failed to create ${metricsSchema}.dead_letter table.`);
     errors.push(new Error(`Failed to create ${metricsSchema}.dead_letter table.`));
   }
+
+  const retentionTtlSettings = await getSupportedClickhouseSettings(clickhouse, {
+    allow_suspicious_ttl_expressions: 1,
+    materialize_ttl_after_modify: 0,
+  });
+  if (retentionTtlSettings.allow_suspicious_ttl_expressions === undefined) {
+    log
+      .atWarn()
+      .log(
+        `ClickHouse does not support dictionary-backed TTL expressions; events-log-trim will use mutation retention`
+      );
+    if (errors.length > 0) {
+      throw new Error("Failed to initialize tables: " + errors.map(e => e.message).join(", "));
+    }
+    return;
+  }
+
   // --- events_log retention: cutoff dictionary + dictGet-driven TTL ---
   // Goal: keep the newest EVENTS_LOG_SIZE rows per (actorId, type, is_error).
   // The dictionary holds, per entity, the timestamp of the N-th newest row
@@ -174,10 +192,12 @@ export async function initEventsLogTables(opts: EventsLogInitOptions): Promise<v
     errors.push(new Error(`Failed to create ${metricsSchema}.events_log_cutoff dictionary.`));
   }
 
-  // Attach the retention TTL. allow_suspicious_ttl_expressions is required
-  // because dictGet is non-deterministic; materialize_ttl_after_modify=0
-  // avoids an immediate full-table mutation on deploy — enforcement happens
-  // on background merges and via the events-log-trim cron's MATERIALIZE TTL.
+  // Attach the retention TTL. Newer ClickHouse releases require
+  // allow_suspicious_ttl_expressions for dictGet; 23.8 does not expose that
+  // setting. Discover supported settings so an unknown one cannot reject the
+  // entire ALTER. materialize_ttl_after_modify=0 avoids an immediate full-table
+  // mutation on deploy — enforcement happens on background merges and via the
+  // events-log-trim cron's MATERIALIZE TTL.
   const modifyTtlQuery: string = `alter table ${metricsSchema}.events_log ${onCluster} modify TTL toDateTime(
          if(timestamp < dictGetOrDefault('${metricsSchema}.events_log_cutoff', 'cutoff', (actorId, type, toUInt8(level = 'error')), toDateTime64('1970-01-01 00:00:00', 3)),
             toDateTime('2000-01-01 00:00:00'),
@@ -185,10 +205,7 @@ export async function initEventsLogTables(opts: EventsLogInitOptions): Promise<v
   try {
     await clickhouse.command({
       query: modifyTtlQuery,
-      clickhouse_settings: {
-        allow_suspicious_ttl_expressions: 1,
-        materialize_ttl_after_modify: 0,
-      },
+      clickhouse_settings: retentionTtlSettings,
     });
     log.atInfo().log(`Retention TTL set on ${metricsSchema}.events_log`);
   } catch (e: any) {

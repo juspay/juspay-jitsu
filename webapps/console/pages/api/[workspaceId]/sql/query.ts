@@ -6,23 +6,13 @@ import { createClient } from "@clickhouse/client";
 import { ClickhouseCredentials } from "../../../../lib/schema/destinations";
 import { Parser } from "node-sql-parser";
 import { db } from "../../../../lib/server/db";
+import { getClickhouseDestinationHttpUrl } from "../../../../lib/server/clickhouse-destination";
 
 const SQLQueryDefaultLimit = 50;
 const log = getServerLog("sql-query");
 
 export const getClickhouseClient = (workspaceId: string, cred: ClickhouseCredentials) => {
-  let [host, port] = cred.hosts[0].split(":");
-  switch (cred.protocol) {
-    case "http":
-      port = port || "8123";
-      break;
-    case "https":
-      port = port || "8443";
-      break;
-    default:
-      port = "8443";
-  }
-  const url = `https://${host}:${port}/`;
+  const url = getClickhouseDestinationHttpUrl(cred);
   log.atDebug().log(`Connecting to ${url} with ${cred.username}`);
   return createClient({
     url: url,

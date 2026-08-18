@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getServerLog } from "../../../lib/server/log";
 import { getServerEnv } from "../../../lib/server/serverEnv";
 import { initEventsLogTables } from "../../../lib/server/clickhouse-init";
+import { initMetricsTables } from "../../../lib/server/clickhouse-metrics-init";
 
 const log = getServerLog("events-log-init");
 
@@ -42,5 +43,14 @@ export default createRoute()
       username: chConfig.username,
       password: chConfig.password,
     });
+    if (serverEnv.CLICKHOUSE_METRICS_INIT) {
+      log.atInfo().log("Initializing Event Statistics ClickHouse tables");
+      await initMetricsTables({
+        clickhouse,
+        database: serverEnv.CLICKHOUSE_METRICS_SCHEMA,
+        cluster: serverEnv.CLICKHOUSE_METRICS_CLUSTER || serverEnv.CLICKHOUSE_CLUSTER,
+      });
+      log.atInfo().log("Event Statistics ClickHouse tables ready");
+    }
   })
   .toNextApiHandler();

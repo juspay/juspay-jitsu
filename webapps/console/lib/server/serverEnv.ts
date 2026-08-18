@@ -52,6 +52,9 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   // Metrics cluster identifier (falls back to CLICKHOUSE_CLUSTER)
   CLICKHOUSE_METRICS_CLUSTER: z.string().optional(),
 
+  // Create the fixed ClickHouse objects required by Event Statistics on startup
+  CLICKHOUSE_METRICS_INIT: z.string().default("false").transform(isTruish),
+
   // ============================================
   // Sync Engine (Syncctl)
   // ============================================

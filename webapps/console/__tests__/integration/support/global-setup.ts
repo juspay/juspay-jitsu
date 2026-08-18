@@ -24,8 +24,9 @@ import type { TestProject } from "vitest/node";
 const REUSE = process.env.CONSOLE_TEST_CONTAINERS_REUSE === "1";
 
 const PG_IMAGE = "postgres:18-alpine"; // prod runs CNPG 18.x
-// Same image + flags as services/rotor tests — matches prod 25.4.x and reuses the CI image cache.
-const CH_IMAGE = "clickhouse/clickhouse-server:25.4-alpine";
+// Match the oldest supported production cluster so DDL cannot accidentally use
+// syntax introduced by a newer ClickHouse release.
+const CH_IMAGE = "clickhouse/clickhouse-server:23.8.9.54-alpine";
 
 function templateDbName(root: string): string {
   const schema = readFileSync(path.join(root, "prisma/schema.prisma"));
