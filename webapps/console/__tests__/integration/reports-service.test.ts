@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { deps, seedWorkspace } from "./support/harness";
 import { ReportsService } from "../../lib/server/reports-service";
+import { initMetricsTables } from "../../lib/server/clickhouse-metrics-init";
+import { getServerEnv } from "../../lib/server/serverEnv";
 
 // Happy paths: syncStat's source_task ⋈ ConfigurationObjectLink join on real
 // Postgres, and eventStat's sumMerge aggregation through the real
@@ -22,6 +24,56 @@ async function seedSync(workspaceId: string) {
 }
 
 describe("ReportsService", () => {
+  it("initializes the Event Statistics schema idempotently", async () => {
+    const metricsDatabase = getServerEnv().CLICKHOUSE_METRICS_SCHEMA;
+    await initMetricsTables({
+      clickhouse: deps().clickhouse,
+      database: metricsDatabase,
+    });
+
+    const result = await deps().clickhouse.query({
+      query: `SELECT name FROM system.tables
+              WHERE database = {database:String}
+                AND name IN ('active_incoming', 'active_incoming_agg_view', 'mv_active_incoming2',
+                             'metrics', 'mv_metrics', 'to_mv_metrics')
+              ORDER BY name`,
+      query_params: { database: metricsDatabase },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as Array<{ name: string }>;
+    expect(rows.map(row => row.name)).toEqual([
+      "active_incoming",
+      "active_incoming_agg_view",
+      "metrics",
+      "mv_active_incoming2",
+      "mv_metrics",
+      "to_mv_metrics",
+    ]);
+  });
+
+  it("aggregates unique active events through the ClickHouse 23.8-compatible view", async () => {
+    const { workspace } = await seedWorkspace();
+    await deps().clickhouse.insert({
+      table: "active_incoming",
+      format: "JSONEachRow",
+      clickhouse_settings: { wait_end_of_query: 1 },
+      values: [
+        { timestamp: "2026-06-10 10:00:00", workspaceId: workspace.id, messageId: "active-1" },
+        { timestamp: "2026-06-10 10:00:00", workspaceId: workspace.id, messageId: "active-1" },
+        { timestamp: "2026-06-10 10:00:00", workspaceId: workspace.id, messageId: "active-2" },
+      ],
+    });
+
+    const result = await deps().clickhouse.query({
+      query: `SELECT count FROM active_incoming_agg_view
+              WHERE workspaceId = {workspaceId:String}`,
+      query_params: { workspaceId: workspace.id },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as Array<{ count: string }>;
+    expect(rows).toEqual([{ count: "2" }]);
+  });
+
   it("syncStat counts distinct syncs with a successful task in the period", async () => {
     const { user, workspace } = await seedWorkspace();
     const sync = await seedSync(workspace.id);

@@ -20,6 +20,7 @@ import { createHash, getClickhouseConfig, randomId, requireDefined } from "juava
 import { getServerLog } from "../lib/server/log";
 import { getServerEnv } from "../lib/server/serverEnv";
 import { initEventsLogTables } from "../lib/server/clickhouse-init";
+import { initMetricsTables } from "../lib/server/clickhouse-metrics-init";
 
 const log = getServerLog("manage");
 
@@ -41,8 +42,7 @@ const commands: Record<string, Command> = {
     },
   },
   "events-log-init": {
-    description:
-      "Create the events-log ClickHouse objects (database, events_log/task_log/dead_letter, retention machinery)",
+    description: "Create events-log objects and, when enabled, the Event Statistics ClickHouse schema",
     usage: "pnpm manage events-log-init",
     handler: async () => {
       // Same DDL the admin/events-log-init route runs in prod — idempotent
@@ -60,6 +60,15 @@ const commands: Record<string, Command> = {
         username: chConfig.username,
         password: chConfig.password,
       });
+      if (serverEnv.CLICKHOUSE_METRICS_INIT) {
+        log.atInfo().log("Initializing Event Statistics ClickHouse tables...");
+        await initMetricsTables({
+          clickhouse,
+          database: serverEnv.CLICKHOUSE_METRICS_SCHEMA,
+          cluster: serverEnv.CLICKHOUSE_METRICS_CLUSTER || serverEnv.CLICKHOUSE_CLUSTER,
+        });
+        log.atInfo().log("Event Statistics ClickHouse tables ready");
+      }
       log.atInfo().log("events-log ClickHouse tables ready");
     },
   },

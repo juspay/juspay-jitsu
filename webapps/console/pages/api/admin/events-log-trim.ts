@@ -4,10 +4,72 @@ import { clickhouse } from "../../../lib/server/clickhouse";
 import dayjs from "dayjs";
 import { getServerLog } from "../../../lib/server/log";
 import { getServerEnv } from "../../../lib/server/serverEnv";
+import { getSupportedClickhouseSettings } from "../../../lib/server/clickhouse-settings";
 
 const log = getServerLog("events-log-trim");
 
 const localIps = ["127.0.0.1", "0:0:0:0:0:0:0:1", "::1", "::ffff:127.0.0.1"];
+
+type OversizedLogGroup = { actorId: string; type: string; is_error: number };
+
+async function trimEventsLogWithMutations(eventsLogSize: number, onCluster: string): Promise<number> {
+  const thresholdSize = Math.floor(eventsLogSize * 1.5);
+  const groupsResult = await clickhouse.query({
+    query: `SELECT actorId, type, toUInt8(level = 'error') AS is_error
+            FROM events_log
+            GROUP BY actorId, type, is_error
+            HAVING count() > {threshold:UInt64}`,
+    query_params: { threshold: thresholdSize },
+    format: "JSONEachRow",
+  });
+  const groups = (await groupsResult.json()) as OversizedLogGroup[];
+  const cutoffs: Array<OversizedLogGroup & { cutoff: string }> = [];
+
+  for (const group of groups) {
+    const cutoffResult = await clickhouse.query({
+      query: `SELECT timestamp
+              FROM events_log
+              WHERE actorId = {actorId:String}
+                AND type = {type:String}
+                AND toUInt8(level = 'error') = {isError:UInt8}
+              ORDER BY timestamp DESC
+              LIMIT 1 OFFSET ${Math.max(eventsLogSize - 1, 0)}`,
+      query_params: {
+        actorId: group.actorId,
+        type: group.type,
+        isError: group.is_error,
+      },
+      format: "JSONEachRow",
+    });
+    const [row] = (await cutoffResult.json()) as Array<{ timestamp: string }>;
+    if (row) {
+      cutoffs.push({ ...group, cutoff: row.timestamp });
+    }
+  }
+
+  if (cutoffs.length === 0) {
+    return 0;
+  }
+
+  const queryParams: Record<string, string | number> = {};
+  const predicates = cutoffs.map((cutoff, index) => {
+    queryParams[`actorId${index}`] = cutoff.actorId;
+    queryParams[`type${index}`] = cutoff.type;
+    queryParams[`isError${index}`] = cutoff.is_error;
+    queryParams[`cutoff${index}`] = cutoff.cutoff;
+    return `(actorId = {actorId${index}:String}
+             AND type = {type${index}:String}
+             AND toUInt8(level = 'error') = {isError${index}:UInt8}
+             AND timestamp < toDateTime64({cutoff${index}:String}, 3))`;
+  });
+  const mutationSettings = await getSupportedClickhouseSettings(clickhouse, { mutations_sync: "0" });
+  await clickhouse.command({
+    query: `ALTER TABLE events_log${onCluster} DELETE WHERE ${predicates.join(" OR ")}`,
+    query_params: queryParams,
+    clickhouse_settings: mutationSettings,
+  });
+  return cutoffs.length;
+}
 
 export default createRoute()
   .GET({
@@ -63,6 +125,23 @@ export default createRoute()
       log.atInfo().log(`Dropped partition ${oldPartition}`);
     } catch (e: any) {
       log.atDebug().withCause(e).log(`Failed to drop partition ${oldPartition}`);
+    }
+
+    const retentionSettings = await getSupportedClickhouseSettings(clickhouse, {
+      allow_suspicious_ttl_expressions: 1,
+      allow_nondeterministic_mutations: 1,
+      mutations_sync: "0",
+    });
+    if (retentionSettings.allow_suspicious_ttl_expressions === undefined) {
+      try {
+        const trimmedGroups = await trimEventsLogWithMutations(eventsLogSize, onCluster);
+        log.atInfo().log(`Mutation retention trimmed ${trimmedGroups} log groups in ${sw.elapsedPretty()}`);
+        res.json({ status: "ok", trimmedGroups, strategy: "mutation" });
+      } catch (e: any) {
+        log.atError().withCause(e).log(`Mutation retention failed`);
+        res.status(500).json({ status: "error", errors: [`mutation retention: ${e.message}`] });
+      }
+      return;
     }
 
     // Collect failures of the retention-critical steps so the cron can retry.
@@ -135,19 +214,16 @@ export default createRoute()
       //    that data is about to be removed by the DROP PARTITION floor anyway,
       //    and reads only ever take the newest rows. The current partition is
       //    where active growth happens and the cap actually needs enforcing.
-      //    Async (mutations_sync=0); allow_suspicious_ttl_expressions and
-      //    allow_nondeterministic_mutations are required because the TTL uses dictGet.
+      //    Async (mutations_sync=0). Some ClickHouse versions require extra
+      //    nondeterministic-TTL settings while 23.8 does not expose all of
+      //    them, so include only settings supported by the live server.
       const materializeQuery: string = `alter table events_log ${onCluster} materialize TTL in partition {partition:String}`;
       const partition = dayjs().format("YYYYMM");
       try {
         await clickhouse.command({
           query: materializeQuery,
           query_params: { partition },
-          clickhouse_settings: {
-            allow_suspicious_ttl_expressions: 1,
-            allow_nondeterministic_mutations: 1,
-            mutations_sync: "0",
-          },
+          clickhouse_settings: retentionSettings,
         });
         log.atInfo().log(`Materialized TTL on partition ${partition}`);
       } catch (e: any) {
